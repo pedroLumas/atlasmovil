@@ -290,6 +290,26 @@ figure.sin-img::before { content: "Imagen no disponible sin conexión"; display:
 #avisos { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: calc(100% - 28px); max-width: 420px; }
 .aviso-t { padding: 11px 16px; border-radius: 14px; background: rgba(236,236,240,.95); color: #050506; border: 1px solid rgba(255,255,255,.5); font: 500 12.5px/1.35 var(--f-texto); box-shadow: 0 12px 30px rgba(0,0,0,.6); animation: entra .2s ease; text-align: center; }
 .aviso-t.sale { opacity: 0; transform: translateY(8px); transition: .4s; }
+/* ---------- pantalla de clave ---------- */
+body.cargando #app { visibility: hidden; }
+#candado { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 22px; background: #000; }
+#candado::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(700px 440px at 4% -6%, rgba(255,255,255,.1), transparent 62%), radial-gradient(620px 440px at 100% 106%, rgba(255,255,255,.07), transparent 62%);
+}
+.tarjeta {
+  position: relative; width: min(360px, 100%); padding: 30px 22px 22px; border-radius: 26px; text-align: center;
+  background: var(--glass), rgba(14,14,17,.7); -webkit-backdrop-filter: var(--vidrio); backdrop-filter: var(--vidrio);
+  border: 1px solid var(--line-2); border-top-color: rgba(255,255,255,.32); box-shadow: var(--sombra), inset 0 1px 0 rgba(255,255,255,.14);
+}
+.tarjeta .rosa { width: 48px; height: 48px; color: var(--acc); }
+.tarjeta h1 { margin: 12px 0 8px; padding-left: .38em; color: var(--ink); font: 700 22px var(--f-titulo); letter-spacing: .38em; }
+.tarjeta p { margin: 0 0 18px; color: var(--muted); font: 400 12px/1.6 var(--f-ui); }
+.tarjeta input { width: 100%; height: 52px; margin-bottom: 12px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid var(--line-2); text-align: center; font: 500 17px var(--f-ui); letter-spacing: .1em; color: var(--ink); outline: 0; }
+.tarjeta input:focus { box-shadow: 0 0 0 2px rgba(255,255,255,.2); }
+.tarjeta .btn { width: 100%; }
+.tarjeta .err { min-height: 18px; margin: 12px 0 0; color: #ff9b94; font: 500 12px var(--f-ui); }
+figure .plate img:not([src]) { min-width: 240px; min-height: 140px; }
 @media (min-width: 760px) {
   .vista, #lectura { }
   #v-lista .lista, #v-lista .filtros, #v-lista .rapido, #v-lista .buscar-fila { max-width: 640px; margin-left: auto; margin-right: auto; }

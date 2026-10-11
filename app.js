@@ -33,13 +33,8 @@ const NOMBRES = {
 };
 const bonito = s => NOMBRES[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " ") : "");
 
-/* ---------- datos ---------- */
-const D = JSON.parse($("datos").textContent);
-const P = D.piezas, POR_ID = new Map(P.map(p => [p.id, p]));
-P.forEach(p => {
-  p.a = p.a || []; p.r = Array.isArray(p.r) ? p.r : [];
-  p.ar = (p.ar || []).map(x => [D.rels[x[0]], P[x[1]].id]);
-});
+/* ---------- datos: llegan cifrados y se preparan al arrancar (ver «clave de acceso») ---------- */
+let D = null, P = [], POR_ID = new Map(), VECINOS = new Map(), ARISTAS = [], GRADO = new Map(), IDX = new Map();
 const LANES = [
   { nombre: "Américas", corto: "Américas", amb: ["norteamerica", "mesoamerica", "sudamerica", "andes"], ci: 1 },
   { nombre: "Mares y océanos", corto: "Mares", amb: ["atlantico", "pacifico", "indico", "polinesia"], ci: 2 },
@@ -52,11 +47,15 @@ const LANES = [
 ];
 const LANE_DE_AMB = new Map();
 LANES.forEach(l => l.amb.forEach(a => LANE_DE_AMB.set(a, l)));
-P.forEach(p => { p._lane = p.a.map(a => LANE_DE_AMB.get(a)).find(Boolean) || LANES[LANES.length - 1]; });
-
-const VECINOS = new Map(P.map(p => [p.id, []]));
-const ARISTAS = [];
-(function () {
+const vecinosUnicos = id => { const m = new Map(); VECINOS.get(id).forEach(v => { if (!m.has(v.id)) m.set(v.id, v); }); return [...m.values()]; };
+function prepararDatos(datos) {
+  D = datos; P = D.piezas; POR_ID = new Map(P.map(p => [p.id, p]));
+  P.forEach(p => {
+    p.a = p.a || []; p.r = Array.isArray(p.r) ? p.r : [];
+    p.ar = (p.ar || []).map(x => [D.rels[x[0]], P[x[1]].id]);
+    p._lane = p.a.map(a => LANE_DE_AMB.get(a)).find(Boolean) || LANES[LANES.length - 1];
+  });
+  VECINOS = new Map(P.map(p => [p.id, []])); ARISTAS = [];
   const vistas = new Set();
   P.forEach(p => p.ar.forEach(([rel, dest]) => {
     if (!POR_ID.has(dest) || dest === p.id) return;
@@ -65,15 +64,15 @@ const ARISTAS = [];
     const k = p.id < dest ? p.id + "|" + dest : dest + "|" + p.id;
     if (!vistas.has(k)) { vistas.add(k); ARISTAS.push({ a: p.id, b: dest, rel }); }
   }));
-})();
-const vecinosUnicos = id => { const m = new Map(); VECINOS.get(id).forEach(v => { if (!m.has(v.id)) m.set(v.id, v); }); return [...m.values()]; };
-const GRADO = new Map(P.map(p => [p.id, vecinosUnicos(p.id).length]));
+  GRADO = new Map(P.map(p => [p.id, vecinosUnicos(p.id).length]));
+  IDX = new Map(P.map(p => [p.id, norm(p.t + " " + p.p + " " + p.a.map(bonito).join(" ") + " " + bonito(p.c) + " " + p._lane.nombre)]));
+  [...abiertas].forEach(id => { if (!POR_ID.has(id)) abiertas.delete(id); });
+  [...leidas].forEach(id => { if (!POR_ID.has(id)) leidas.delete(id); });
+}
 const ETIQ_REL = { paralelo: "Paralelo", atraviesa: "Atraviesa", contradice: "Contradice", causa: "Causa", pertenece: "Pertenece a", corrobora: "Corrobora", contra: "Contra", _ent: "Otras lecciones que la citan" };
 
 /* ---------- progreso de lectura: 0 sin abrir · 1 abierta · 2 leída ---------- */
 let abiertas = cargarSet("atlas-m-abiertas"), leidas = cargarSet("atlas-m-lect");
-[...abiertas].forEach(id => { if (!POR_ID.has(id)) abiertas.delete(id); });
-[...leidas].forEach(id => { if (!POR_ID.has(id)) leidas.delete(id); });
 const persistir = () => { guardar("atlas-m-abiertas", JSON.stringify([...abiertas])); guardar("atlas-m-lect", JSON.stringify([...leidas])); };
 const estado = id => leidas.has(id) ? 2 : abiertas.has(id) ? 1 : 0;
 const clase = id => ["", " abierta", " leida"][estado(id)];
@@ -113,8 +112,9 @@ function imagen(src, alt) {
   const archivo = src.split("/").pop(), url = IMGS[archivo];
   const cap = alt ? "<figcaption>" + inline(alt) + "</figcaption>" : "";
   if (!url) return "";                           // imagen del paquete original que nunca llegó a bajarse: no se muestra hueco
-  const lam = /\.svg$/i.test(archivo) && url.indexOf("img/") === 0 ? ' class="lam"' : "";
-  return "<figure" + lam + '><div class="plate"><img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="' + esc(url) + '" alt="' + esc(plano(alt)) + '"></div>' + cap + "</figure>";
+  const local = Array.isArray(url), lam = local && /\.svg$/i.test(archivo) ? ' class="lam"' : "";
+  const fuente = local ? ' data-e="' + esc(url[0]) + '" data-t="' + esc(url[1]) + '"' : ' loading="lazy" referrerpolicy="no-referrer" src="' + esc(url) + '"';
+  return "<figure" + lam + '><div class="plate"><img decoding="async"' + fuente + ' alt="' + esc(plano(alt)) + '"></div>' + cap + "</figure>";
 }
 const celdas = l => l.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(c => c.replace(/\\\|/g, "|").trim());
 function render(md) {
@@ -161,13 +161,76 @@ function render(md) {
   return { html: out.join("\n"), toc };
 }
 
+/* ---------- clave de acceso ----------
+   El contenido del repositorio va cifrado (AES-256-GCM). La clave se deriva de la contraseña con PBKDF2 (SHA-256) y,
+   una vez comprobada, se guarda en este dispositivo para no volver a pedirla. */
+const enc = new TextEncoder(), dec = new TextDecoder();
+const deB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const aB64 = u => btoa(String.fromCharCode(...u));
+const normClave = s => s.normalize("NFKC").trim().toLowerCase();
+let KEY = null;
+const claveDeBytes = raw => crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+async function derivarBytes(clave, kj) {
+  const mat = await crypto.subtle.importKey("raw", enc.encode(normClave(clave)), "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: deB64(kj.sal), iterations: kj.it }, mat, 256));
+}
+async function descifrar(k, buf) {
+  const u = new Uint8Array(buf);
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv: u.slice(0, 12) }, k, u.slice(12));
+}
+async function comprobarClave(k, kj) {
+  const r = await descifrar(k, deB64(kj.chk));          // lanza si la clave no es la buena
+  if (dec.decode(r) !== "ATLAS") throw new Error("clave");
+}
+function pedirClave(kj) {
+  return new Promise(resolve => {
+    const c = $("candado"), f = $("f-candado"), i = $("i-clave"), e = $("e-clave"), b = f.querySelector("button[type=submit]");
+    c.hidden = false; setTimeout(() => i.focus(), 200);
+    f.onsubmit = async ev => {
+      ev.preventDefault();
+      if (!i.value.trim()) return;
+      b.disabled = true; e.textContent = "Comprobando…";
+      try {
+        const raw = await derivarBytes(i.value, kj), k = await claveDeBytes(raw);
+        await comprobarClave(k, kj);
+        guardar("atlas-m-k", aB64(raw)); i.value = ""; e.textContent = ""; c.hidden = true; resolve(k);
+      } catch (err) { e.textContent = "Clave incorrecta"; b.disabled = false; i.select(); }
+    };
+  });
+}
+function mostrarFallo(msg) {
+  const c = $("candado");
+  c.innerHTML = '<div class="tarjeta"><svg class="rosa"><use href="#i-rosa"/></svg><h1>ATLAS</h1><p>' + esc(msg) + '</p><button class="btn p" onclick="location.reload()">Reintentar</button></div>';
+  c.hidden = false;
+}
+const BLOBS = new Map();                         // ruta cifrada -> URL del blob ya descifrado
+async function urlImagen(ruta, mime) {
+  if (BLOBS.has(ruta)) return BLOBS.get(ruta);
+  const r = await fetch(ruta);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const url = URL.createObjectURL(new Blob([await descifrar(KEY, await r.arrayBuffer())], { type: mime }));
+  BLOBS.set(ruta, url); return url;
+}
+let obsImg = null;
+function cargarImagenes(cont) {
+  const pend = [...cont.querySelectorAll("img[data-e]")];
+  const poner = async im => {
+    try { im.src = await urlImagen(im.dataset.e, im.dataset.t); }
+    catch (e) { const f = im.closest("figure"); if (f) f.classList.add("sin-img"); }
+  };
+  if (obsImg) { obsImg.disconnect(); obsImg = null; }
+  if (!("IntersectionObserver" in window)) { pend.forEach(poner); return; }
+  obsImg = new IntersectionObserver(es => es.forEach(en => { if (en.isIntersecting) { obsImg.unobserve(en.target); poner(en.target); } }), { root: $("lectura"), rootMargin: "700px 0px" });
+  pend.forEach(im => obsImg.observe(im));
+}
+
 /* ---------- lecciones: se descargan al abrirlas ---------- */
 const CACHE_LEC = new Map();
 async function cargarLeccion(id) {
   if (CACHE_LEC.has(id)) return CACHE_LEC.get(id);
-  const r = await fetch("data/l/" + encodeURIComponent(id) + ".json");
+  const r = await fetch("data/l/" + POR_ID.get(id).f + ".bin");
   if (!r.ok) throw new Error("HTTP " + r.status);
-  const L = await r.json();
+  const L = JSON.parse(dec.decode(await descifrar(KEY, await r.arrayBuffer())));
   CACHE_LEC.set(id, L);
   if (CACHE_LEC.size > 10) CACHE_LEC.delete(CACHE_LEC.keys().next().value);
   return L;
@@ -179,7 +242,6 @@ const aTexto = md => md.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/[#*|>_`]/
    LISTA
    ===================================================================== */
 const E = { q: "", estado: "", region: "", orden: "az", visibles: [] };
-const IDX = new Map(P.map(p => [p.id, norm(p.t + " " + p.p + " " + p.a.map(bonito).join(" ") + " " + bonito(p.c) + " " + p._lane.nombre)]));
 const ACENTOS = { a: "aáàäâ", e: "eéèëê", i: "iíìïî", o: "oóòöô", u: "uúùüû", n: "nñ", c: "cç" };
 function resaltar(texto, toks) {
   let h = esc(texto);
@@ -325,6 +387,7 @@ function pintarLeccion(p, L) {
     (rel ? '<section class="rel"><h2>Relacionadas</h2>' + rel + "</section>" : "") +
     '<div class="nav">' + (prev ? '<button data-id="' + esc(prev.id) + '"><small>← Anterior</small>' + esc(prev.t) + "</button>" : "") +
     (sig ? '<button data-id="' + esc(sig.id) + '"><small>Siguiente →</small>' + esc(sig.t) + "</button>" : "") + "</div>";
+  cargarImagenes($("hoja"));
   vigilarFin(id);
 }
 function estadoBotonesLectura() {
@@ -754,6 +817,7 @@ function abrirMenu() {
     '<div class="fila"><div><b>Leer sin conexión</b><small id="m-off-t">' + (tod ? "Guardado en este móvil. Se actualiza solo cuando hay internet." : "Guarda todas las lecciones y sus imágenes en este móvil (unos 40 MB).") +
     '</small><div class="barra-prog" id="m-off-b" hidden><i></i></div></div><button class="btn" id="m-off">' + (tod ? "Actualizar" : "Guardar") + "</button></div>" +
     '<div class="fila"><div><b>Borrar mi progreso</b><small>Deja todas las lecciones como sin leer.</small></div><button class="btn peligro" data-reset>Borrar</button></div>' +
+    '<div class="fila"><div><b>Bloquear este dispositivo</b><small>Olvida la clave guardada: la volverá a pedir.</small></div><button class="btn" data-bloquear>Bloquear</button></div>' +
     '<p class="legal">ATLAS · ' + P.length + " lecciones · creado " + esc(D.creado) + " · licencia " + esc(D.licencia) + ". Lecciones redactadas con ayuda de IA y aún sin verificar por una persona: contrasta los datos importantes. Las imágenes vienen de Wikimedia Commons, con su autoría y licencia en el pie de cada una. Tu progreso se guarda solo en este móvil.</p>" +
     '<button class="btn p" data-cerrar-menu style="width:100%;margin-top:14px">Cerrar</button>';
   $("menu").hidden = false;
@@ -768,7 +832,7 @@ async function guardarTodo() {
   let n = 0;
   const poner = () => { const b = $("m-off-b"); if (b) b.firstElementChild.style.width = Math.round(n / P.length * 100) + "%"; const t = $("m-off-t"); if (t) t.textContent = "Guardando… " + n + " de " + P.length; };
   await cargarTextos((L, hechas) => {
-    if (L) Object.values(L.img || {}).forEach(u => { if (u.indexOf("img/") === 0) imgs.add(u); });
+    if (L) Object.values(L.img || {}).forEach(u => { if (Array.isArray(u)) imgs.add(u[0]); });
     if (hechas) { n = hechas; poner(); }
   });
   const lista = [...imgs]; let k = 0;
@@ -793,6 +857,7 @@ function irTab(t, desdeRuta) {
   if (t === "mapa") entrarMapa(); else M.visible = false;
 }
 function ruta() {
+  if (!P.length) return;
   const h = decodeURIComponent(location.hash.slice(1));
   if (h && POR_ID.has(h)) { if (ACTUAL !== h || $("lectura").hidden) abrir(h, true); return; }
   cerrarLectura();
@@ -801,12 +866,13 @@ function ruta() {
 window.addEventListener("popstate", ruta);
 
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-id],[data-sel],[data-marcar],[data-toggle],[data-mapa],[data-cerrar],[data-cerrar-menu],[data-estado],[data-region],[data-azar],[data-limpiar],[data-buscar-texto],[data-ir],[data-tam],[data-reset],#m-off,#menu,#logo,#b-menu,#t-lista,#t-mapa,#l-atras,#l-menos,#l-mas,#l-ok,#orden,#z-mas,#z-menos,#z-fit,#zoom,figure img");
+  const t = e.target.closest("[data-id],[data-sel],[data-marcar],[data-toggle],[data-mapa],[data-cerrar],[data-cerrar-menu],[data-estado],[data-region],[data-azar],[data-limpiar],[data-buscar-texto],[data-ir],[data-tam],[data-reset],[data-bloquear],#m-off,#menu,#logo,#b-menu,#t-lista,#t-mapa,#l-atras,#l-menos,#l-mas,#l-ok,#orden,#z-mas,#z-menos,#z-fit,#zoom,figure img");
   if (!t) return;
   if (t.id === "zoom") { t.hidden = true; return; }
-  if (t.tagName === "IMG" && t.closest("figure")) { const z = $("zoom"); z.classList.toggle("lam", !!t.closest("figure.lam")); z.firstElementChild.src = t.src; z.hidden = false; z.scrollTop = 0; z.scrollLeft = 0; return; }
+  if (t.tagName === "IMG" && t.closest("figure")) { if (!t.getAttribute("src")) return; const z = $("zoom"); z.classList.toggle("lam", !!t.closest("figure.lam")); z.firstElementChild.src = t.src; z.hidden = false; z.scrollTop = 0; z.scrollLeft = 0; return; }
   if (t.id === "menu") { if (e.target === t) t.hidden = true; return; }
   if (t.dataset.cerrarMenu !== undefined) { $("menu").hidden = true; return; }
+  if (t.dataset.bloquear !== undefined) { quitar("atlas-m-k"); location.reload(); return; }
   if (t.dataset.reset !== undefined) {
     if (confirm("¿Borrar todo tu progreso de lectura en este móvil?")) {
       abiertas.clear(); leidas.clear(); persistir(); quitar("atlas-m-ultima");
@@ -878,11 +944,31 @@ document.addEventListener("keydown", e => {
 });
 
 /* ---------- arranque ---------- */
-aplicarTam();
-pintarProgreso(); pintarRapido(); pintarLista();
-$("pie").textContent = P.length + " lecciones · creado " + D.creado + " · " + D.licencia;
-ruta();
-window.__atlas = { P, M, E, estado, abrir, marcarLeida, seleccionar, irTab };   // para pruebas desde la consola
+function iniciar() {
+  document.body.classList.remove("cargando");
+  aplicarTam();
+  pintarProgreso(); pintarRapido(); pintarLista();
+  $("pie").textContent = P.length + " lecciones · creado " + D.creado + " · " + D.licencia;
+  ruta();
+  window.__atlas = { P, M, E, estado, abrir, marcarLeida, seleccionar, irTab };   // para pruebas desde la consola
+}
+async function arrancar() {
+  let kj;
+  try { kj = await (await fetch("data/k.json")).json(); }
+  catch (e) { mostrarFallo("No se pudo abrir ATLAS. Si estás sin conexión, ábrelo una vez con internet."); return; }
+  const guardada = leer("atlas-m-k");
+  if (guardada) {
+    try { KEY = await claveDeBytes(deB64(guardada)); await comprobarClave(KEY, kj); }
+    catch (e) { KEY = null; quitar("atlas-m-k"); }
+  }
+  if (!KEY) KEY = await pedirClave(kj);
+  let datos;
+  try { datos = JSON.parse(dec.decode(await descifrar(KEY, await (await fetch("data/i.bin")).arrayBuffer()))); }
+  catch (e) { quitar("atlas-m-k"); mostrarFallo("No se pudieron leer los datos. Si estás sin conexión, ábrelo una vez con internet."); return; }
+  prepararDatos(datos);
+  iniciar();
+}
+arrancar();
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
 }

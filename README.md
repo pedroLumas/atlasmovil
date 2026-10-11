@@ -15,6 +15,11 @@ Estilo «Cristal negro»: negro puro, gris oscuro y vidrio. Son 244 lecciones (g
 3. A los pocos minutos queda en `https://<usuario>.github.io/<repositorio>/`.
 4. En el móvil, abre ese enlace y usa **Añadir a pantalla de inicio** (en iPhone: Compartir → Añadir a pantalla de inicio).
 
+## Acceso con clave
+
+El contenido (lecciones, índice e imágenes) está **cifrado** con AES-256-GCM: sin la clave, el repositorio solo contiene datos ilegibles.
+La clave se escribe una vez en cada dispositivo y se queda guardada (en Ajustes → «Bloquear este dispositivo» se olvida).
+
 ## Aviso
 
 Las lecciones se redactaron con ayuda de IA y están **sin verificar** por una persona (`verificado: no`): contrasta los datos importantes.
@@ -23,4 +28,4 @@ Las imágenes proceden de Wikimedia Commons, con su autoría y licencia en el pi
 ## Cómo se genera
 
 Esta carpeta es el resultado de `herramientas/construir-movil.py` del paquete ATLAS de escritorio. No se edita a mano:
-cuando cambian las lecciones se vuelve a generar y se hace commit.
+cuando cambian las lecciones se vuelve a generar (con la misma clave) y se hace commit.

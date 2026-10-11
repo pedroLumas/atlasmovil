@@ -2,9 +2,9 @@
    - La aplicación (index, estilos, programa) se sirve de la red si hay internet y, si no, de la copia guardada.
    - Las lecciones (data/l/) se sirven de la copia guardada y se actualizan por detrás.
    - Las imágenes locales (img/) se guardan al verlas y no cambian. Las de Wikimedia se piden siempre a su servidor. */
-const V = "20261011124737";
+const V = "20261011132559";
 const APP = "atlas-m-app-" + V, DATOS = "atlas-m-datos", FUENTES = "atlas-m-fuentes";
-const PRE = ["./", "index.html", "estilo.css?v=" + V, "app.js?v=" + V, "manifest.webmanifest", "icon-192.png"];
+const PRE = ["./", "index.html", "estilo.css?v=" + V, "app.js?v=" + V, "manifest.webmanifest", "icon-192.png", "data/k.json", "data/i.bin"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(APP).then(c => c.addAll(PRE)).then(() => self.skipWaiting()));
